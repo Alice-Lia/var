@@ -1,0 +1,64 @@
+** Set working directory **
+cd "C:\BSE\Final Year Project\Analysis"
+
+
+****** SLOVAKIA ****** Information effect: when a MP shock leads to higher Y
+
+** Import data SVK **
+import excel "SVK.xlsx", firstrow clear
+
+
+** Date adjustments **
+gen qdate = qofd(date)
+format qdate %tq
+tsset qdate
+
+
+** Log levels of variables and difference **
+gen lgdp = ln(gdp)
+gen dlgdp = (lgdp - L4.lgdp) * 100
+
+gen lpr = ln(inf)
+gen dlpr = (lpr - L4.lpr) * 100
+
+gen durate = d.urate
+
+gen prod = gdp * 1000000 / emp
+gen lprod = ln(prod)
+gen dlprod = (lprod - L4.lprod) * 100
+
+gen lcpi = ln(cpi)
+gen dlcpi = (lcpi - L4.lcpi) * 100
+
+gen inflation = dlcpi
+replace inflation = dlpr if inflation == .
+
+
+
+** VAR estimation, stability check and IRFs **
+bayes, saving(svk_pre, replace): var dlprod dlgdp inflation if qdate <= q(2008q4), lags(1/4)
+*varstable
+bayesirf create preeuro, step(20) clevel(68) set(irf1, replace)
+
+bayesirf graph oirf, impulse(dlprod) response(dlgdp) clevel(68) title("Response of dlgdp to dlprod") name(g1, replace)
+*irf graph oirf, impulse(irate) response(durate) title("Response of durate to irate") noci name(g2, replace)
+bayesirf graph oirf, impulse(dlprod) response(inflation) clevel(68) title("Response of inflation to dlprod") name(g3, replace)
+bayesirf graph oirf, impulse(dlprod) response(dlprod) clevel(68) title("Response of dlprod to dlprod") name(g4, replace)
+
+graph combine g1 g3 g4, cols(3) title("Impulse Response Function (SVK): 1996Q1 - 2008Q4") ///
+    name(preeuro, replace)
+graph export SVK_pre_prod.pdf, replace
+
+** VAR estimation, stability check and IRFs **
+bayes, saving(svk_post, replace): var dlprod dlgdp inflation if qdate >= q(2009q1), lags(1/4)
+*varstable
+bayesirf create posteuro, step(15) clevel(68) set(irf2, replace)
+
+bayesirf graph oirf, impulse(dlprod) response(dlgdp) clevel(68) title("Response of dlgdp to dlprod") name(g1, replace)
+*irf graph oirf, impulse(irate) response(durate) title("Response of durate to irate") noci name(g2, replace)
+bayesirf graph oirf, impulse(dlprod) response(inflation) clevel(68) title("Response of inflation to dlprod") name(g3, replace)
+bayesirf graph oirf, impulse(dlprod) response(dlprod) clevel(68) title("Response of dlprod to dlprod") name(g4, replace)
+
+graph combine g1 g3 g4, cols(3) title("Impulse Response Function (SVK): 2009Q1 - 2024Q3") ///
+    name(posteuro, replace)
+graph export SVK_post_prod.pdf, replace
