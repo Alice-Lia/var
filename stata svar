@@ -1,64 +1,44 @@
-** Set working directory **0000
-cd "C:\BSE\Final Year Project\Analysis"
+**************************************************
+* 4) Rescale & compare dlprod←dlprod IRFs
+**************************************************
+scalar factor = sigma_pre / sigma_post
+
+// 4a) Export horizons 0–20 into matrices Mpre and Mpost
+irf table oirf, set(irf1) impulse(dlprod) response(dlprod) step(20) matrix(Mpre)
+irf table oirf, set(irf2) impulse(dlprod) response(dlprod) step(20) matrix(Mpost)
 
 
-****** SLOVAKIA ****** Information effect: when a MP shock leads to higher Y
-
-** Import data SVK **
-import excel "SVK.xlsx", firstrow clear
-
-
-** Date adjustments **
-gen qdate = qofd(date)
-format qdate %tq
-tsset qdate
-
-
-** Log levels of variables and difference **
-gen lgdp = ln(gdp)
-gen dlgdp = (lgdp - L4.lgdp) * 100
-
-gen lpr = ln(inf)
-gen dlpr = (lpr - L4.lpr) * 100
-
-gen durate = d.urate
-
-gen prod = gdp * 1000000 / emp
-gen lprod = ln(prod)
-gen dlprod = (lprod - L4.lprod) * 100
-
-gen lcpi = ln(cpi)
-gen dlcpi = (lcpi - L4.lcpi) * 100
-
-gen inflation = dlcpi
-replace inflation = dlpr if inflation == .
+// 4b) Convert Mpre → dataset "pre_irf_data"
+clear
+// ensure Mpre is a row vector of length 21 (horizons 0–20)
+matrix list Mpre
+// make it a column so svmat works cleanly
+matrix Mp = Mpre'
+svmat Mp, names(col)
+rename Mp1 response_pre
+gen step = _n-1
+save pre_irf_data, replace
 
 
+// 4c) Convert Mpost → dataset "post_scaled_irf"
+clear
+matrix Qp = Mpost'
+svmat Qp, names(col)
+rename Qp1 response_post
+gen step = _n-1
+gen response_post_scaled = response_post * factor
+save post_scaled_irf, replace
 
-** VAR estimation, stability check and IRFs **
-bayes, saving(svk_pre, replace): var dlprod dlgdp inflation if qdate <= q(2008q4), lags(1/4)
-*varstable
-bayesirf create preeuro, step(20) clevel(68) set(irf1, replace)
 
-bayesirf graph oirf, impulse(dlprod) response(dlgdp) clevel(68) title("Response of dlgdp to dlprod") name(g1, replace)
-*irf graph oirf, impulse(irate) response(durate) title("Response of durate to irate") noci name(g2, replace)
-bayesirf graph oirf, impulse(dlprod) response(inflation) clevel(68) title("Response of inflation to dlprod") name(g3, replace)
-bayesirf graph oirf, impulse(dlprod) response(dlprod) clevel(68) title("Response of dlprod to dlprod") name(g4, replace)
+// 4d) Merge & plot comparison
+use pre_irf_data, clear
+merge 1:1 step using post_scaled_irf
 
-graph combine g1 g3 g4, cols(3) title("Impulse Response Function (SVK): 1996Q1 - 2008Q4") ///
-    name(preeuro, replace)
-graph export SVK_pre_prod.pdf, replace
+twoway ///
+  (line response_pre        step, lpattern(solid))    ///
+  (line response_post_scaled step, lpattern(dash)),  ///
+    ytitle("Response of dlprod") xtitle("Step")        ///
+    legend(order(1 "Pre-euro" 2 "Post-euro (scaled)")) ///
+    title("IRF of dlprod to a common shock magnitude")
 
-** VAR estimation, stability check and IRFs **
-bayes, saving(svk_post, replace): var dlprod dlgdp inflation if qdate >= q(2009q1), lags(1/4)
-*varstable
-bayesirf create posteuro, step(15) clevel(68) set(irf2, replace)
-
-bayesirf graph oirf, impulse(dlprod) response(dlgdp) clevel(68) title("Response of dlgdp to dlprod") name(g1, replace)
-*irf graph oirf, impulse(irate) response(durate) title("Response of durate to irate") noci name(g2, replace)
-bayesirf graph oirf, impulse(dlprod) response(inflation) clevel(68) title("Response of inflation to dlprod") name(g3, replace)
-bayesirf graph oirf, impulse(dlprod) response(dlprod) clevel(68) title("Response of dlprod to dlprod") name(g4, replace)
-
-graph combine g1 g3 g4, cols(3) title("Impulse Response Function (SVK): 2009Q1 - 2024Q3") ///
-    name(posteuro, replace)
-graph export SVK_post_prod.pdf, replace
+graph export SVK_compare_dlprod.pdf, replace
